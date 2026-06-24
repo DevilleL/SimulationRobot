@@ -4,9 +4,9 @@ Rôle : mettre en relation le PC (qui exécute la simulation) et les navigateurs
 sans que le PC ait besoin d'être joignable directement (il se connecte en sortant).
 
 Endpoints :
-  GET  /                      -> page de contrôle (web/index.html)
+  GET  /                      -> page d'état (JSON). L'interface est l'app POCAA-WEB.
   WS   /ws/robot?room=&token= -> connexion du PC (un seul robot par room)
-  WS   /ws/pilot?room=&token= -> connexion d'un navigateur (plusieurs possibles)
+  WS   /ws/pilot?room=&token= -> connexion d'un pilote (POCAA-WEB, plusieurs possibles)
 
 Sécurité : un token partagé (variable d'environnement PILOT_TOKEN) protège
 l'accès. À déployer derrière HTTPS/WSS (Render le fournit automatiquement).
@@ -15,23 +15,22 @@ Lancement local :  uvicorn web_control.relay:app --reload --port 8000
 Sur Render        :  uvicorn web_control.relay:app --host 0.0.0.0 --port $PORT
 """
 import os
-import pathlib
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import HTMLResponse
 
 from .hub import Hub
 
 TOKEN = os.environ.get("PILOT_TOKEN", "demo-token-change-me")
-WEB_DIR = pathlib.Path(__file__).parent / "web"
 
 app = FastAPI(title="POCAA — relais de pilotage")
 hub = Hub()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def index():
-    return (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    # Le relais ne sert plus de page : l'interface est l'app POCAA-WEB,
+    # qui se connecte ici via /ws/pilot. Ce point sert juste de page d'état.
+    return {"service": "POCAA relay", "endpoints": ["/ws/robot", "/ws/pilot", "/health"]}
 
 
 @app.get("/health")
