@@ -15,8 +15,10 @@ Lancement local :  uvicorn web_control.relay:app --reload --port 8000
 Sur Render        :  uvicorn web_control.relay:app --host 0.0.0.0 --port $PORT
 """
 import os
+import pathlib
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import HTMLResponse
 
 from .hub import Hub
 
@@ -25,12 +27,19 @@ TOKEN = os.environ.get("PILOT_TOKEN", "demo-token-change-me")
 app = FastAPI(title="POCAA — relais de pilotage")
 hub = Hub()
 
+ADMIN_HTML = pathlib.Path(__file__).parent / "admin.html"
+
 
 @app.get("/")
 async def index():
-    # Le relais ne sert plus de page : l'interface est l'app POCAA-WEB,
-    # qui se connecte ici via /ws/pilot. Ce point sert juste de page d'état.
-    return {"service": "POCAA relay", "endpoints": ["/ws/robot", "/ws/pilot", "/health"]}
+    # L'interface élève est l'app POCAA-WEB (se connecte via /ws/pilot).
+    # Le dashboard de supervision est servi ici sur /admin.
+    return {"service": "POCAA relay", "endpoints": ["/admin", "/ws/robot", "/ws/pilot", "/health"]}
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin():
+    return ADMIN_HTML.read_text(encoding="utf-8")
 
 
 @app.get("/health")

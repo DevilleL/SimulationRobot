@@ -47,6 +47,7 @@ class RobotSession:
             "type": "tel",
             "x": round(tel["x"], 4), "y": round(tel["y"], 4), "theta": round(tel["theta"], 4),
             "vL": round(tel["meas_l"], 3), "vR": round(tel["meas_r"], 3),
+            "spL": round(tel["sp_l"], 3), "spR": round(tel["sp_r"], 3),
             "v": round(tel["v"], 3), "w": round(tel["w"], 3),
             "state": tel["state"],
             "xlim": round(self.x_limit, 3), "ylim": round(self.y_limit, 3),
@@ -69,6 +70,9 @@ async def run(url, room, token):
                     m = json.loads(raw)
                     if m.get("type") == "cmd":
                         session.on_command(m.get("v", 0.0), m.get("w", 0.0))
+                    elif m.get("type") == "ping":
+                        # renvoie le ping tel quel pour la mesure de latence
+                        await ws.send(json.dumps({"type": "pong", "id": m.get("id")}))
                 except (ValueError, TypeError):
                     pass
 

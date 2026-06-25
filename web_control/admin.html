@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POCAA — Supervision locomotion</title>
+<style>
+  :root{ --navy:#0E2436; --navy2:#13334E; --teal:#2DD4BF; --cyan:#38BDF8;
+         --indigo:#818CF8; --amber:#FBBF24; --red:#EF4444; --txt:#E2ECF5; --muted:#9FB3C8; --line:#1E4361; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--navy); color:var(--txt); }
+  header{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 18px; border-bottom:1px solid var(--line); }
+  h1{ font-size:17px; margin:0; }
+  .tag{ font-size:12px; color:var(--muted); }
+  input{ background:#0B1C2C; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:7px 9px; font-size:13px; }
+  button{ border:0; border-radius:8px; padding:8px 12px; font-size:13px; font-weight:bold; cursor:pointer; background:var(--teal); color:#06231e; }
+  button.ghost{ background:#1E4361; color:var(--txt); }
+  button.stop{ background:var(--red); color:#fff; }
+  .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--muted); margin-right:6px; }
+  main{ display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px; }
+  @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+  .card{ background:var(--navy2); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h2{ font-size:13px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  canvas{ background:#0B1C2C; border-radius:10px; width:100%; display:block; }
+  .kpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+  .kpi{ background:#0B1C2C; border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+  .kpi .v{ font-size:18px; font-weight:bold; font-family:ui-monospace,Consolas,monospace; }
+  .kpi .l{ font-size:10px; color:var(--muted); text-transform:uppercase; }
+  .pad{ display:grid; grid-template-columns:repeat(3,52px); grid-gap:6px; justify-content:center; margin-top:10px; }
+  .pad button{ height:46px; font-size:18px; }
+  .pad .e{ visibility:hidden; }
+  .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .slider{ width:100%; }
+  .legend{ font-size:11px; color:var(--muted); }
+  .legend b.sp{ color:var(--amber); } .legend b.rl{ color:var(--teal); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛠️ POCAA — Supervision locomotion</h1>
+  <span class="tag">Room</span><input id="room" value="demo-classroom" size="12">
+  <span class="tag">Token</span><input id="token" placeholder="PILOT_TOKEN" size="20">
+  <button id="connect">Connecter</button>
+  <span><span class="dot" id="dot"></span><span id="status">déconnecté</span></span>
+  <span id="lat" class="tag"></span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Carte (vue de dessus)</h2>
+    <canvas id="map" width="640" height="460"></canvas>
+  </section>
+
+  <section class="card">
+    <h2>Télémétrie</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="k_state">—</div><div class="l">État</div></div>
+      <div class="kpi"><div class="v" id="k_v">0.00</div><div class="l">v (m/s)</div></div>
+      <div class="kpi"><div class="v" id="k_w">0.00</div><div class="l">w (rad/s)</div></div>
+      <div class="kpi"><div class="v" id="k_x">0.00</div><div class="l">x (m)</div></div>
+      <div class="kpi"><div class="v" id="k_y">0.00</div><div class="l">y (m)</div></div>
+      <div class="kpi"><div class="v" id="k_th">0</div><div class="l">cap (°)</div></div>
+    </div>
+    <div class="legend">Asservissement roues — <b class="sp">consigne</b> vs <b class="rl">réel</b></div>
+    <canvas id="chartL" width="640" height="150"></canvas>
+    <div class="tag" style="margin:4px 0 8px">Roue gauche</div>
+    <canvas id="chartR" width="640" height="150"></canvas>
+    <div class="tag" style="margin-top:4px">Roue droite</div>
+
+    <h2 style="margin-top:14px">Pilotage manuel (test)</h2>
+    <div class="row"><span class="tag">Vitesse</span><input id="speed" class="slider" type="range" min="0" max="100" step="5" value="60"><span id="spv" class="tag">60%</span></div>
+    <div class="pad">
+      <span class="e"></span>
+      <button data-k="up">▲</button>
+      <span class="e"></span>
+      <button data-k="left">◀</button>
+      <button class="stop" id="estop">■</button>
+      <button data-k="right">▶</button>
+      <span class="e"></span>
+      <button data-k="down">▼</button>
+      <span class="e"></span>
+    </div>
+    <p class="tag" style="text-align:center">Flèches/ZQSD aussi. Ce pilotage partage la même room que l'élève.</p>
+  </section>
+</main>
+
+<script>
+const V_MAX=0.75, V_BACK=0.35, W_MAX=2.0;
+let ws=null, trail=[], histL=[], histR=[];
+const held={up:false,down:false,left:false,right:false};
+let speed=60, clientId=Math.random().toString(36).slice(2,8), pingSeq=0, pingSent=new Map(), driveTimer=null, pingTimer=null;
+const $=id=>document.getElementById(id);
+
+// remember token/room
+try{ const s=JSON.parse(localStorage.getItem("pocaa-admin")||"{}"); if(s.room)$("room").value=s.room; if(s.token)$("token").value=s.token; }catch{}
+
+function wsURL(){
+  const proto=location.protocol==="https:"?"wss":"ws";
+  const room=encodeURIComponent($("room").value||"demo-classroom");
+  const token=encodeURIComponent($("token").value||"");
+  return `${proto}://${location.host}/ws/pilot?room=${room}&token=${token}`;
+}
+function setStatus(t,on){ $("status").textContent=t; $("dot").style.background=on?"var(--teal)":"var(--red)"; }
+
+function connect(){
+  localStorage.setItem("pocaa-admin", JSON.stringify({room:$("room").value, token:$("token").value}));
+  if(ws){ ws.close(); ws=null; }
+  ws=new WebSocket(wsURL());
+  ws.onopen=()=>{ setStatus("connecté",true); startPing(); };
+  ws.onclose=()=>{ setStatus("déconnecté",false); stopPing(); };
+  ws.onerror=()=>setStatus("erreur",false);
+  ws.onmessage=ev=>{
+    let m; try{ m=JSON.parse(ev.data); }catch{ return; }
+    if(!m) return;
+    if(m.type==="tel") onTel(m);
+    else if(m.type==="pong" && typeof m.id==="string"){ const s=pingSent.get(m.id); if(s!=null){ pingSent.delete(m.id); const ms=Math.round(performance.now()-s); $("lat").textContent="latence "+ms+" ms"; $("lat").style.color = ms<100?"#2dd4bf":ms<300?"#fbbf24":"#ef4444"; } }
+    else if(m.type==="status"){ setStatus(m.robot_online?"connecté (robot en ligne)":"connecté (robot hors ligne)",true); }
+  };
+}
+function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+
+// ---- ping ----
+function startPing(){ if(pingTimer!=null) return; const f=()=>{ if(!ws||ws.readyState!==1) return; const now=performance.now(); for(const[k,t]of pingSent) if(now-t>5000)pingSent.delete(k); const id=clientId+"-"+(++pingSeq); pingSent.set(id,now); send({type:"ping",id}); }; f(); pingTimer=setInterval(f,2000); }
+function stopPing(){ if(pingTimer!=null){ clearInterval(pingTimer); pingTimer=null; } pingSent.clear(); }
+
+// ---- pilotage manuel ----
+function loop(){ if(driveTimer!=null) return; driveTimer=setInterval(()=>{ if(!(held.up||held.down||held.left||held.right)){ clearInterval(driveTimer); driveTimer=null; return; } const k=speed/100; let v=0,w=0; if(held.up)v+=V_MAX*k; if(held.down)v-=V_BACK*k; if(held.left)w+=W_MAX*k; if(held.right)w-=W_MAX*k; send({type:"cmd",v,w}); },50); }
+function press(d){ held[d]=true; loop(); }
+function release(d){ held[d]=false; if(!(held.up||held.down||held.left||held.right)) send({type:"cmd",v:0,w:0}); }
+function stopAll(){ for(const k in held)held[k]=false; send({type:"cmd",v:0,w:0}); }
+
+document.querySelectorAll(".pad button[data-k]").forEach(b=>{ const k=b.dataset.k;
+  b.addEventListener("pointerdown",e=>{e.preventDefault();press(k);});
+  b.addEventListener("pointerup",e=>{e.preventDefault();release(k);});
+  b.addEventListener("pointerleave",()=>release(k));
+});
+$("estop").addEventListener("click",stopAll);
+const KMAP={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right",z:"up",s:"down",q:"left",d:"right",Z:"up",S:"down",Q:"left",D:"right"};
+addEventListener("keydown",e=>{const d=KMAP[e.key]; if(!d)return; e.preventDefault(); if(!e.repeat)press(d);});
+addEventListener("keyup",e=>{const d=KMAP[e.key]; if(!d)return; e.preventDefault(); release(d);});
+$("speed").addEventListener("input",e=>{ speed=+e.target.value; $("spv").textContent=speed+"%"; });
+$("connect").addEventListener("click",connect);
+
+// ---- télémétrie ----
+function onTel(t){
+  $("k_state").textContent=t.state; $("k_state").style.color = t.state==="NORMAL"?"#2dd4bf":"#ef4444";
+  $("k_v").textContent=t.v.toFixed(2); $("k_w").textContent=t.w.toFixed(2);
+  $("k_x").textContent=t.x.toFixed(2); $("k_y").textContent=t.y.toFixed(2);
+  $("k_th").textContent=Math.round(t.theta*180/Math.PI);
+  trail.push([t.x,t.y]); if(trail.length>400)trail.shift();
+  histL.push([t.spL ?? 0, t.vL]); if(histL.length>240)histL.shift();
+  histR.push([t.spR ?? 0, t.vR]); if(histR.length>240)histR.shift();
+  drawMap(t); drawChart($("chartL"),histL); drawChart($("chartR"),histR);
+}
+function drawMap(t){
+  const c=$("map"), x=c.getContext("2d"), W=c.width, H=c.height; x.clearRect(0,0,W,H);
+  const xl=t.xlim||2.1, yl=t.ylim||1.6, s=Math.min((W*0.46)/xl,(H*0.46)/yl);
+  const P=(ax,ay)=>[W/2+ax*s,H/2-ay*s];
+  x.strokeStyle="#1E4361"; x.lineWidth=1; const a=P(-xl,-yl),b=P(xl,yl); x.strokeRect(a[0],b[1],b[0]-a[0],a[1]-b[1]);
+  x.strokeStyle="#818CF8"; x.lineWidth=2; x.beginPath(); trail.forEach((p,i)=>{const q=P(p[0],p[1]); i?x.lineTo(q[0],q[1]):x.moveTo(q[0],q[1]);}); x.stroke();
+  const p=P(t.x,t.y), r=(t.track?t.track/2:0.15)*s;
+  x.fillStyle=t.state==="NORMAL"?"#2DD4BF":"#EF4444"; x.beginPath(); x.arc(p[0],p[1],r,0,7); x.fill();
+  x.strokeStyle="#fff"; x.lineWidth=3; x.beginPath(); x.moveTo(p[0],p[1]); x.lineTo(p[0]+Math.cos(t.theta)*r*1.6,p[1]-Math.sin(t.theta)*r*1.6); x.stroke();
+}
+function drawChart(c,h){
+  const x=c.getContext("2d"), W=c.width, H=c.height, pad=6; x.clearRect(0,0,W,H);
+  const M=12; // échelle ± rad/s
+  const Y=v=>H/2 - (v/M)*(H/2-pad);
+  x.strokeStyle="#1E4361"; x.lineWidth=1; x.beginPath(); x.moveTo(0,H/2); x.lineTo(W,H/2); x.stroke();
+  if(h.length<2) return;
+  const X=i=>i/(h.length-1)*W;
+  // consigne (ambre, pointillé)
+  x.strokeStyle="#FBBF24"; x.lineWidth=1.5; x.setLineDash([4,3]); x.beginPath(); h.forEach((p,i)=>{const y=Y(p[0]); i?x.lineTo(X(i),y):x.moveTo(X(i),y);}); x.stroke(); x.setLineDash([]);
+  // réel (teal)
+  x.strokeStyle="#2DD4BF"; x.lineWidth=1.8; x.beginPath(); h.forEach((p,i)=>{const y=Y(p[1]); i?x.lineTo(X(i),y):x.moveTo(X(i),y);}); x.stroke();
+}
+drawMap({x:0,y:0,theta:Math.PI/2,state:"—",xlim:2.1,ylim:1.6,track:0.3});
+</script>
+</body>
+</html>
