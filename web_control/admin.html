@@ -38,6 +38,9 @@
   .gain{ display:grid; grid-template-columns:36px 1fr 56px; align-items:center; gap:8px; margin:6px 0; }
   .gain label{ font-family:ui-monospace,Consolas,monospace; font-size:13px; }
   .gain .val{ font-family:ui-monospace,Consolas,monospace; font-size:13px; text-align:right; color:var(--cyan); }
+  .pidlegend{ margin:8px 0; line-height:1.35; }
+  .pidlegend p{ margin:3px 0; }
+  .pidlegend b{ color:var(--cyan); font-family:ui-monospace,Consolas,monospace; }
   .latrow{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:8px 0; }
   .latrow .c{ background:#0B1C2C; border:1px solid var(--line); border-radius:8px; padding:6px; text-align:center; }
   .latrow .c .v{ font-family:ui-monospace,Consolas,monospace; font-size:15px; font-weight:bold; }
@@ -98,7 +101,13 @@
     <div class="gain"><label>Kp</label><input id="kp" type="range" min="0" max="3" step="0.05" value="0.7"><span class="val" id="kpv">0.70</span></div>
     <div class="gain"><label>Ki</label><input id="ki" type="range" min="0" max="5" step="0.05" value="1.1"><span class="val" id="kiv">1.10</span></div>
     <div class="gain"><label>Kd</label><input id="kd" type="range" min="0" max="0.2" step="0.005" value="0"><span class="val" id="kdv">0.000</span></div>
-    <p class="tag">Les gains sont appliqués aux deux roues ; observe l'effet sur les courbes ci-contre.</p>
+    <div class="row" style="margin-top:4px"><button class="ghost" id="pidreset">↺ Réinitialiser (défaut)</button></div>
+    <div class="pidlegend tag">
+      <p><b>Kp</b> — proportionnel : réagit à l'erreur <i>actuelle</i>. Plus haut = plus nerveux/rapide, mais oscille si trop fort.</p>
+      <p><b>Ki</b> — intégral : corrige l'erreur <i>accumulée</i> (supprime l'écart qui persiste). Trop fort = dépassement / instabilité.</p>
+      <p><b>Kd</b> — dérivé : anticipe la <i>variation</i> de l'erreur, amortit les oscillations. Trop fort = sensible au bruit.</p>
+    </div>
+    <p class="tag">Gains appliqués aux deux roues ; observe l'effet sur les courbes ci-contre.</p>
 
     <h2 style="margin-top:14px">Pilotage manuel (test)</h2>
     <div class="row"><span class="tag">Vitesse</span><input id="speed" type="range" min="0" max="100" step="5" value="60" style="flex:1"><span id="spv" class="tag">60%</span></div>
@@ -215,6 +224,8 @@ function sendPid(){ const kp=+$("kp").value, ki=+$("ki").value, kd=+$("kd").valu
   $("kpv").textContent=kp.toFixed(2); $("kiv").textContent=ki.toFixed(2); $("kdv").textContent=kd.toFixed(3);
   send({type:"config",kp,ki,kd}); }
 ["kp","ki","kd"].forEach(id=>$(id).addEventListener("input",sendPid));
+const PID_DEFAULT={kp:0.7,ki:1.1,kd:0};
+$("pidreset").addEventListener("click",()=>{ $("kp").value=PID_DEFAULT.kp; $("ki").value=PID_DEFAULT.ki; $("kd").value=PID_DEFAULT.kd; sendPid(); logEvent("PID réinitialisé (Kp=0.7 Ki=1.1 Kd=0)"); });
 
 // ---- sécurité ----
 let estopOn=false;
