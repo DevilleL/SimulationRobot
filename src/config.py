@@ -30,9 +30,9 @@ class RobotConfig:
     watchdog_timeout: float = 0.5      # s   (perte réseau > 500 ms => arrêt)
 
     # --- Anticollision (capteurs de proximité simulés) ---
-    sensor_range: float = 0.9          # m   (portée des capteurs avant)
-    collision_slow: float = 0.55       # m   (distance où l'on commence à ralentir)
-    collision_stop: float = 0.22       # m   (distance d'arrêt)
+    sensor_range: float = 1.2          # m   (portée des capteurs avant)
+    collision_slow: float = 0.90       # m   (distance où l'on commence à ralentir)
+    collision_stop: float = 0.55       # m   (distance d'arrêt, marge pour le freinage)
 
     @property
     def wheel_radius(self) -> float:

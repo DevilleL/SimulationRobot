@@ -14,7 +14,7 @@ def test_arret_devant_obstacle():
         tel = r.step(dt, t)
     surface = 1.2 - 0.25                     # bord de l'obstacle = 0.95 m
     assert r.pose[0] < surface              # n'a pas pénétré l'obstacle
-    assert r.pose[0] > 0.5                  # mais a bien avancé avant de s'arrêter
+    assert r.pose[0] > 0.3                  # mais a bien avancé avant de s'arrêter
     assert tel["avoid"] is True             # l'évitement s'est déclenché
 
 
