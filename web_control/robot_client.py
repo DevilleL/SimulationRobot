@@ -67,6 +67,10 @@ class RobotSession:
             "kp": round(self.robot.pid_l.kp, 3),
             "ki": round(self.robot.pid_l.ki, 3),
             "kd": round(self.robot.pid_l.kd, 3),
+            "cslow": round(self.cfg.collision_slow, 3),
+            "cstop": round(self.cfg.collision_stop, 3),
+            "aturn": round(self.cfg.avoid_turn, 3),
+            "srange": round(self.cfg.sensor_range, 3),
             "dmin": round(min(tel["dmin"], self.cfg.sensor_range), 3),
             "avoid": tel["avoid"],
             "obs": [[round(o[0], 3), round(o[1], 3), round(o[2], 3)] for o in self.world.obstacles],
@@ -99,6 +103,10 @@ async def run(url, room, token):
                             if "kp" in m: pid.kp = float(m["kp"])
                             if "ki" in m: pid.ki = float(m["ki"])
                             if "kd" in m: pid.kd = float(m["kd"])
+                        # réglage anticollision en direct (cfg partagé avec le robot)
+                        for key in ("collision_slow", "collision_stop", "avoid_turn", "sensor_range"):
+                            if key in m:
+                                setattr(session.cfg, key, float(m[key]))
                     elif mtype == "estop":
                         if m.get("on"):
                             session.robot.safety.trigger_estop()

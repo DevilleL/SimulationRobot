@@ -41,6 +41,8 @@
   .pidlegend{ margin:8px 0; line-height:1.35; }
   .pidlegend p{ margin:3px 0; }
   .pidlegend b{ color:var(--cyan); font-family:ui-monospace,Consolas,monospace; }
+  #accard .gain{ grid-template-columns:64px 1fr 54px; }
+  #accard .gain label{ font-size:12px; }
   .latrow{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:8px 0; }
   .latrow .c{ background:#0B1C2C; border:1px solid var(--line); border-radius:8px; padding:6px; text-align:center; }
   .latrow .c .v{ font-family:ui-monospace,Consolas,monospace; font-size:15px; font-weight:bold; }
@@ -139,6 +141,21 @@
     <p class="tag">Teste la robustesse : « perte réseau » fait déclencher le watchdog (le robot s'arrête puis repart). L'ESTOP fige le robot jusqu'à réarmement.</p>
   </section>
 
+  <section class="card" id="accard">
+    <h2>Anticollision (réglage live)</h2>
+    <div class="gain"><label>Réagit</label><input id="cslow" type="range" min="0.2" max="1.2" step="0.05" value="0.55"><span class="val" id="cslowv">0.55</span></div>
+    <div class="gain"><label>Distance</label><input id="cstop" type="range" min="0.1" max="0.9" step="0.05" value="0.30"><span class="val" id="cstopv">0.30</span></div>
+    <div class="gain"><label>Esquive</label><input id="aturn" type="range" min="0" max="4" step="0.1" value="2.5"><span class="val" id="aturnv">2.5</span></div>
+    <div class="gain"><label>Portée</label><input id="srange" type="range" min="0.4" max="1.5" step="0.05" value="0.9"><span class="val" id="srangev">0.90</span></div>
+    <div class="row" style="margin-top:4px"><button class="ghost" id="acreset">↺ Réinitialiser</button></div>
+    <div class="pidlegend tag">
+      <p><b>Réagit</b> — distance à laquelle le robot commence à esquiver (collision_slow).</p>
+      <p><b>Distance</b> — distance qu'il conserve en longeant l'obstacle (collision_stop).</p>
+      <p><b>Esquive</b> — vivacité du braquage de contournement (avoid_turn).</p>
+      <p><b>Portée</b> — portée des capteurs avant (sensor_range).</p>
+    </div>
+  </section>
+
   <section class="card wide">
     <h2>Journal d'événements</h2>
     <div class="row" style="justify-content:space-between; margin-bottom:8px">
@@ -159,7 +176,7 @@ let obsControlled=false, mapS=1, lastTel=null, dragIdx=-1, dragOff=[0,0], lastOb
 const DEFAULT_OBS=[[1.5,0,0.25],[-0.9,0.6,0.25],[-0.6,-0.7,0.3]];
 const held={up:false,down:false,left:false,right:false};
 let speed=60, clientId=Math.random().toString(36).slice(2,8), pingSeq=0, pingSent=new Map();
-let driveTimer=null, pingTimer=null, telCount=0, lastHz=0, lastState=null, pidInit=false;
+let driveTimer=null, pingTimer=null, telCount=0, lastHz=0, lastState=null, pidInit=false, antiInit=false;
 let wdCount=0, esCount=0, rcCount=0, hadConnected=false;
 const $=id=>document.getElementById(id);
 
@@ -277,6 +294,18 @@ mapEl.addEventListener("contextmenu",e=>{
 $("obsreset").addEventListener("click",()=>{ obstacles=DEFAULT_OBS.map(o=>[...o]); pushObstacles(true); logEvent("Obstacles réinitialisés"); });
 $("obsclear").addEventListener("click",()=>{ obstacles=[]; pushObstacles(true); logEvent("Obstacles effacés"); });
 
+// ---- réglage anticollision en direct ----
+function sendAnti(){
+  $("cslowv").textContent=(+$("cslow").value).toFixed(2);
+  $("cstopv").textContent=(+$("cstop").value).toFixed(2);
+  $("aturnv").textContent=(+$("aturn").value).toFixed(1);
+  $("srangev").textContent=(+$("srange").value).toFixed(2);
+  send({type:"config", collision_slow:+$("cslow").value, collision_stop:+$("cstop").value, avoid_turn:+$("aturn").value, sensor_range:+$("srange").value});
+}
+["cslow","cstop","aturn","srange"].forEach(id=>$(id).addEventListener("input",sendAnti));
+const ANTI_DEFAULT={cslow:0.55,cstop:0.30,aturn:2.5,srange:0.9};
+$("acreset").addEventListener("click",()=>{ $("cslow").value=ANTI_DEFAULT.cslow; $("cstop").value=ANTI_DEFAULT.cstop; $("aturn").value=ANTI_DEFAULT.aturn; $("srange").value=ANTI_DEFAULT.srange; sendAnti(); logEvent("Anticollision réinitialisée"); });
+
 // ---- journal / CSV ----
 $("clearlog").addEventListener("click",()=>{ events=[]; renderLog(); });
 $("csv").addEventListener("click",()=>{
@@ -291,6 +320,8 @@ function onTel(t){
   telCount++;
   if(!pidInit && t.kp!=null){ pidInit=true; $("kp").value=t.kp; $("ki").value=t.ki; $("kd").value=t.kd;
     $("kpv").textContent=(+t.kp).toFixed(2); $("kiv").textContent=(+t.ki).toFixed(2); $("kdv").textContent=(+t.kd).toFixed(3); }
+  if(!antiInit && t.cslow!=null){ antiInit=true; $("cslow").value=t.cslow; $("cstop").value=t.cstop; $("aturn").value=t.aturn; $("srange").value=t.srange;
+    $("cslowv").textContent=(+t.cslow).toFixed(2); $("cstopv").textContent=(+t.cstop).toFixed(2); $("aturnv").textContent=(+t.aturn).toFixed(1); $("srangev").textContent=(+t.srange).toFixed(2); }
   if(t.state!==lastState){ if(t.state==="WATCHDOG_STOP"){ wdCount++; $("c_wd").textContent=wdCount; logEvent("Watchdog déclenché (perte réseau)"); }
     if(t.state==="ESTOP"){ esCount++; $("c_es").textContent=esCount; logEvent("Robot en ARRÊT D'URGENCE"); }
     if(t.state==="NORMAL" && lastState){ logEvent("Retour à l'état NORMAL"); } lastState=t.state; }
