@@ -43,28 +43,43 @@ class Robot:
         self._cmd = (v, w)
         self._last_cmd_time = now
 
-    def _front_distance(self):
-        """Distance au plus proche obstacle dans l'arc avant (capteurs simulés)."""
+    def _sensor_distances(self):
+        """Distance mesurée par chaque capteur avant : liste de (angle, distance)."""
         if self.world is None:
-            return float("inf")
+            return []
         x, y, th = self.pose
         rng = self.cfg.sensor_range
-        return min(self.world.ray_distance(x, y, th + a, rng) for a in SENSOR_ANGLES)
+        return [(a, self.world.ray_distance(x, y, th + a, rng)) for a in SENSOR_ANGLES]
+
+    def _anticollision(self, v, w):
+        """Bride l'avance ET braque vers le côté dégagé : le robot garde sa
+        distance et glisse le long de l'obstacle au lieu de bloquer net."""
+        c = self.cfg
+        dists = self._sensor_distances()
+        if not dists:
+            return v, w, float("inf"), False
+        dmin = min(d for _, d in dists)
+        if v <= 0 or dmin >= c.collision_slow:
+            return v, w, dmin, False
+        # 1) ralentit l'avance selon la distance frontale
+        scale = (dmin - c.collision_stop) / (c.collision_slow - c.collision_stop)
+        scale = max(0.0, min(1.0, scale))
+        v_new = v * scale
+        # 2) braque vers le côté le plus dégagé (gauche = angles > 0)
+        left = min([d for a, d in dists if a > 0] or [c.sensor_range])
+        right = min([d for a, d in dists if a < 0] or [c.sensor_range])
+        block = min(1.0, (c.collision_slow - dmin) / c.collision_slow)
+        side = 1.0 if left >= right else -1.0
+        w_new = w + side * block * c.avoid_turn
+        return v_new, w_new, dmin, True
 
     def step(self, dt, now):
         """Un pas de la boucle de contrôle. Renvoie un dict de télémétrie."""
         c = self.cfg
         v, w = self._cmd
 
-        # anticollision : on bride l'avance si un obstacle est détecté devant
-        dmin = self._front_distance()
-        avoid = False
-        if v > 0 and dmin < c.collision_slow:
-            if dmin <= c.collision_stop:
-                v = 0.0
-            else:
-                v *= (dmin - c.collision_stop) / (c.collision_slow - c.collision_stop)
-            avoid = True
+        # anticollision : ralentit l'avance + braque pour glisser le long des obstacles
+        v, w, dmin, avoid = self._anticollision(v, w)
 
         # consigne roues (cinématique inverse)
         target_l, target_r = kinematics.inverse(v, w, c.track_width, c.wheel_radius)

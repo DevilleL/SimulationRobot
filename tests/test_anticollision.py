@@ -3,19 +3,23 @@ from src.robot import Robot
 from src.world import World
 
 
-def test_arret_devant_obstacle():
+def test_glisse_le_long_de_l_obstacle():
     w = World([(1.2, 0.0, 0.25)])          # obstacle droit devant
     r = Robot(world=w)
     t, dt = 0.0, 0.02
-    tel = None
-    for _ in range(800):                    # 16 s
+    min_clear = 999.0
+    avoided = False
+    for _ in range(1500):                   # 30 s : on pousse vers l'obstacle en continu
         t += dt
-        r.command(0.6, 0.0, t)              # on fonce tout droit
+        r.command(0.6, 0.0, t)
         tel = r.step(dt, t)
-    surface = 1.2 - 0.25                     # bord de l'obstacle = 0.95 m
-    assert r.pose[0] < surface              # n'a pas pénétré l'obstacle
-    assert r.pose[0] > 0.3                  # mais a bien avancé avant de s'arrêter
-    assert tel["avoid"] is True             # l'évitement s'est déclenché
+        dist_surface = ((r.pose[0] - 1.2) ** 2 + r.pose[1] ** 2) ** 0.5 - 0.25
+        min_clear = min(min_clear, dist_surface)
+        if tel["avoid"]:
+            avoided = True
+    assert avoided                          # l'évitement s'est déclenché
+    assert min_clear > 0.05                 # n'a jamais pénétré l'obstacle (garde la distance)
+    assert abs(r.pose[1]) > 0.1             # a glissé latéralement (contournement)
 
 
 def test_pas_d_anticollision_sans_monde():

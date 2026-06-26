@@ -33,6 +33,7 @@ class RobotConfig:
     sensor_range: float = 1.2          # m   (portée des capteurs avant)
     collision_slow: float = 0.90       # m   (distance où l'on commence à ralentir)
     collision_stop: float = 0.55       # m   (distance d'arrêt, marge pour le freinage)
+    avoid_turn: float = 2.5            # rad/s (braquage d'évitement : glisser le long)
 
     @property
     def wheel_radius(self) -> float:
